@@ -100,6 +100,11 @@ private send(msg) {
     if (phone) {
         sendSms(phone, msg)
     }
+	
+	If (!sendPushMessage && !phone){
+		sendNotificationEvent(msg)
+
+	}
 
     log.debug msg
 }
