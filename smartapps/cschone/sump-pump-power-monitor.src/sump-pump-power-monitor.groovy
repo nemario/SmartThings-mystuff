@@ -62,20 +62,20 @@ def handler(evt) {
     if (!state.cycleOn && isRunning) {
         // If the sump pump starts drawing energy, send notification.
         state.cycleOn = true
-        def message = "Sump pump started running"
+        def message = "Sump pump - Started"
         log.trace "${message}"
         send(message)
     } else if (state.cycleOn && isRunning) {
         // If the sump pump continues drawing energy,
         // send more notifications.
-        def message = "Your sump pump is still running"
+        def message = "Sump pump - Running long"
         log.trace "${message}"
         // this is probably overkill
         //send(message)
     } else if (state.cycleOn && !isRunning) {
         // If the sump pump stops drawing power, send notification.
         state.cycleOn = false
-        def message = "Your sump pump stopped running"
+        def message = "Sump pump - Stopped"
         log.trace "${message}"
         send(message)
     } else {
@@ -93,18 +93,17 @@ def handler(evt) {
 }
 
 private send(msg) {
+    
     if (sendPushMessage) {
         sendPush(msg)
     }
-
+    else {
+    	sendNotificationEvent(msg)
+    }
+   
     if (phone) {
         sendSms(phone, msg)
     }
 	
-	If (!sendPushMessage && !phone){
-		sendNotificationEvent(msg)
-
-	}
-
     log.debug msg
 }
