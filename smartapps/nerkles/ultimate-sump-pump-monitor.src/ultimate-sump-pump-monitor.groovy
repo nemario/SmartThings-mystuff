@@ -2,39 +2,31 @@ definition(
     name: "Ultimate Sump Pump Monitor",
     namespace: "nerkles",
     author: "Chris Apple",
-    description: "Monitor my sump pump, using power, vibration and water sensors.",
+    description: "Monitor my sump pump, using power, vibration and water sensors.  Also updates a virtual sump pump so its status can be seen as a device.",
     category: "Safety & Security",
     iconUrl: "https://s3.amazonaws.com/smartthings-device-icons/alarm/water/wet.png",
     iconX2Url: "https://s3.amazonaws.com/smartthings-device-icons/alarm/water/wet@2x.png",
     iconX3Url: "https://s3.amazonaws.com/smartthings-device-icons/alarm/water/wet@3x.png")
 
 preferences {
-    section ("Power Device:") {
-        input "meter", "capability.powerMeter", multiple: false, required: false
-    }
-    section("Vibration Sensor:") {
-         input "multi", "capability.accelerationSensor", title: "Which?", multiple: false, required: false
-    }
-    section("Water Sensor:") {
-         input "water", "capability.waterSensor", title: "Which?", multiple: false, required: false
+    section ("Devices:") {
+        input "meter", "capability.powerMeter", title: "Power Meter", multiple: false, required: true
+        input "multi", "capability.accelerationSensor", title: "Vibration Sensor", multiple: false, required: true
+        input "water", "capability.waterSensor", title: "Water Sensor", multiple: false, required: true
+        input "sump", "capability.waterSensor", title: "Virtual Sump Pump (not currentl optional)", multiple: false, required: true
     }
 
-    section (title: "Notification method") {
+    section (title: "Notification Settings") {
+	    input "runLength", "number", required: true, title: "How long does your sump pump run (in seconds)?"
+        input "runsEvery", "number", required: true, title: "How often should your sump pump run (in minutes)?"
         input "sendPushMessage", "bool", title: "Send a push notification?"
-    }
-    
-    section("Update virtual Sump Pump (optional):") {
-         input "sump", "capability.waterSensor", title: "Which?", multiple: false, required: false
+        input "phone", "phone", title: "Send a text message to:", required: false
     }
 
-//    section (title: "Notification method") {
-//        input "phone", "phone", title: "Send a text message to:", required: true
-//    }
 }
 
 def installed() {
     log.debug "Installed with settings: ${settings}"
-
     initialize()
 }
 
@@ -46,18 +38,19 @@ def updated() {
 }
 
 def initialize() {
-    subscribe(meter, "energy", handler)
-    subscribe(meter, "power", handler)
-    subscribe(multi, "acceleration.active", tempSendEvtMsg)
-    subscribe(multi, "acceleration.inactive", tempSendEvtMsg)
-    subscribe(water, "wet", tempSendEvtMsg)
-    subscribe(water, "dry", tempSendEvtMsg)
+    subscribe(meter, "energy", incomingEnergyEvent)
+    subscribe(meter, "power", incomingEnergyEvent)
     
     meter.reset();
     meter.on()
+        
+    subscribe(multi, "acceleration.active", incomingVibrationEvent)
+    subscribe(multi, "acceleration.inactive", incomingVibrationEvent)
+        
+    subscribe(water, "wet", incomingWaterEvents)
+    subscribe(water, "dry", incomingWaterEvents)
     
-    state.cycleOn = false;
-    state.lastEnergy = 0
+	setupState()   
     
     log.trace "initialize"
     log.debug "lastEnergy: ${state.lastEnergy}"
@@ -65,119 +58,260 @@ def initialize() {
 }
 
 //setup state variables
-
-//process incoming evt
-	//energy
-    //vibration
-    //wet/dry
-//run virtual device update
-	//running or not running
-    //wet/dry
+def setupState() {
+	state.cycleOn = false;
+    state.lastEnergy = 0
+        
+    state.lastCycleStartDateTime = now()
+    state.lastCycleEndDateTime = now()
     
-//check alerts
-	//running / stopping
-    //Running too long
-    //Running too often
-    //Wet!!!
-    //Wet while running...
-//send notifications
+    state.currentOnOffActivity = "inactive"
+    state.lastOnOffActivity = "turnedOff"
+}
 
-def handler(evt) {
-    log.trace "handler"
-    def currentEnergy = meter.currentValue("energy")
-    def currentPower = meter.currentValue("power")
-    //def currentState = meter.currentValue("switch")
+//process incoming evt===============================================================
+	//energy===============================================================
+    def incomingEnergyEvent(evt){
 
-    log.trace "Current Energy: ${currentEnergy}"
-    log.trace "Current Power: ${currentPower}"
-    //log.trace "Current Power: ${currentState}"
+        log.trace "processIncomingEnergyEvents"
+        
+        def currentEnergy = meter.currentValue("energy")
+        def currentPower = meter.currentValue("power")
+        def currentState = meter.currentValue("switch")
 
-    def isRunning = (currentEnergy > state.lastEnergy) || (currentPower > 0)
+        if(currentState == "off") {
+            log.trace "Forced switch on."
+            send("Sump Pump power turned back on.")
+            meter.on()
+        }
 
-    if (!state.cycleOn && isRunning) {
-        // If the sump pump starts drawing energy, send notification.
-        state.cycleOn = true
-        def message = "Ultimate Sump pump - Started"
+        log.trace "Current Energy: ${currentEnergy}"
+        log.trace "Current Power: ${currentPower}"
+        log.trace "Current Power: ${currentState}"
+
+        def isRunning = (currentEnergy > state.lastEnergy) || (currentPower > 0)
+        def onOffSwitch = "na"
+
+        //Determine which thing is did
+        if (!state.cycleOn && isRunning) {
+            state.cycleOn = true
+            state.currentOnOffActivity = "turnedOn"
+        } else if (state.cycleOn && isRunning) {
+             state.currentOnOffActivity = "stillRunnning"
+        } else if (state.cycleOn && !isRunning) {
+            state.cycleOn = false
+            state.currentOnOffActivity = "turnedOff"
+        }
+
+        state.lastEnergy = currentEnergy;
         
-       sump.On()
-        
-        log.trace "${message}"
-        send(message)
-    } else if (state.cycleOn && isRunning) {
-        // If the sump pump continues drawing energy,
-        // send more notifications.
-        def message = "Ultimate Sump pump - Running long"
-        
-        sump.On()
-        
-        log.trace "${message}"
-        // this is probably overkill
-        //send(message)
-    } else if (state.cycleOn && !isRunning) {
-        // If the sump pump stops drawing power, send notification.
-        state.cycleOn = false
-        def message = "Ultimate Sump pump - Stopped"
-        
-        sump.Off()
-        
-        log.trace "${message}"
-        send(message)
-    } else {
-        // this should not happen
-        log.trace "No activity."
+        processOnOffActivity() 
+        cleanup()
     }
-    state.lastEnergy = currentEnergy;
-
-    // negate physical on/off switch
-    // If using this device as a monitor it shold never be off
-    //if(currentState == "off") {
-    //    log.trace "Forced switch on."
-    //    meter.on()
-    //}
-}
-
-def tempSendEvtMsg(evt){
-
-	def message = "uSP - ${evt.name} - ${evt.value}"
-    log.trace "${message}"
-    send(message)
+    //vibration===============================================================
+    def incomingVibrationEvent(evt){
+        def message = "uSP - ${evt.name} - ${evt.value}"
+        log.trace "${message}"
+        //send(message)
+        
+        if (evt.value == "active"){
+        	state.currentOnOffActivity = "turnedOn"
+        }
+        else if (evt.value == "inactive"){
+            state.currentOnOffActivity = "turnedOff"
+        }
+		processOnOffActivity() 
+        cleanup()
+    }
     
-    //sump.On()
-
+    //wet/dry===============================================================
+    def incomingWaterEvents(evt){
+    	//TO BE ADDED
+        def message = "uSP - ${evt.name} - ${evt.value}"
+        log.trace "${message}"
+        send(message)
 }
+    
+//run virtual device update===============================================================
+	//running or not running===============================================================
+    def processOnOffActivity() {
+		
+        //state.lastCycleStartDateTime = 0
+    	//state.lastCycleEndDateTime = 0
+        //runLength
+        //runEvery
+        
+        def isGreaterThanRunLength = false
+        def isGreaterThanRunEvery = false
+        
+		if (state.lastCycleEndDateTime >= now() - (runEvery * 60) * 60000){
+           	isGreaterThanRunEvery = true
+        }
+        
+        if (now() - state.lastCycleStartDateTime >= runLength * 60000) {
+            isGreaterThanRunLength = true
+        } 
+        		
+        //-----------------------------------------
+		if (state.lastOnOffActivity == "turnedOn"){
+        	//===============
+        	if (state.currentOnOffActivity == "turnedOff"){
+            	turnOffVirtualSump()
+                state.lastCycleEndDateTime = now()
+                if (isGreaterThanRunLength){
+                	notifyRanTooLong() 
+                }
+                else{
+                	notifyOff() 
+                }
+            }
+            //===============
+            else if (state.currentOnOffActivity == "turnedOn"){
+				turnOnVirtualSump()
+                if (isGreaterThanRunLength) {
+                    if (!isGreaterThanRunEvery){
+                        notifyRunTooOften()
+                    }
+                    else{
+                        notifyOn()
+                    }
+                    state.lastCycleStartDateTime = now()
+                }
+			}
+            //===============
+            else if (state.currentOnOffActivity == "stillRunnning"){
+            	turnOnVirtualSump()
+                if (isGreaterThanRunLength){
+                	notifyRunningTooLong()
+                }
+                else { 
+                	//Nothing 
+                }
+            }
+        }
+        //-----------------------------------------
+        else if (state.lastOnOffActivity == "turnedOff"){
+        	//===============
+        	if (state.currentOnOffActivity == "turnedOn"){
+            	turnOnVirtualSump()
+                state.lastCycleStartDateTime = now()
+                if (!isGreaterThanRunEvery) {
+                	notifyRunTooOften()
+                }else{
+                	notifyOn()
+                }
+            }
+            //===============
+            else if (state.currentOnOffActivity == "turnedOff"){
+            	turnOffVirtualSump()
+                state.lastCycleStopDateTime = now()
+            	if (isGreaterThanRunLength){
+                    notifyRanTooLong()
+                }
+                else{
+                	notifyOff()
+                }
+            }
+            //===============
+            else if (state.currentOnOffActivity == "stillRunnning"){
+            	turnOnVirtualSump()
+                state.lastCycleStopDateTime = now()
+                if (!isGreaterThanRunEvery) {
+                	notifyRunTooOften()
+                }else{
+                	notifyOn()
+                }
+            }
+        }
+        
+    }
+    
+    def turnOffManuallyAfterFiveMinutes(){
+    	if (state.currentOnOffActivity == "turnedOff"){
+        	//Do Nothing
+        }else{
+    		turnOffVirtualSump()
+        	send("Manually turning off virtual Sump Pump")
+        }
+    }
+    
+    def turnOnVirtualSump(){
+        log.trace "Turning on - virtual Sump Pump"
+        sump.on()
+        //runIn(runLength, checkToSeeIfTurnedOff)
+    }
 
-def checkFrequency(evt){
-	log.debug("running check sump")
-	def lastTime = state[frequencyKeyAccelration(evt)]
+    def turnOffVirtualSump(){
+	    log.trace "Turning off - virtual Sump Pump"
+        sump.off()
+    }
+    //wet/dry===============================================================
+    def turnOnWetStatus(){
+        log.trace "Wet Status - virtual Sump Pump"
+        sump.wet()
+    }
 
-	if (lastTime == null) {
-		state[frequencyKeyAccelration(evt)] = now()
-	}
+    def turnOnDryStatus(){
+        log.trace "Dry Status - virtual Sump Pump"
+        sump.wet()
+    }
 
-	else if (now() - lastTime >= frequency * 60000) {
-		state[frequencyKeyAccelration(evt)] = now()
-	}
-
-
-	else if (now() - lastTime <= frequency * 60000) {
-		log.debug("Last time valid")
-		def timePassed = now() - lastTime
-		def timePassedFix = timePassed / 60000
-		def timePassedRound = Math.round(timePassedFix.toDouble()) + (unit ?: "")
-		state[frequencyKeyAccelration(evt)] = now()
-		def msg = messageText ?: "Alert: Sump pump has ran in twice in the last ${timePassedRound} minutes."
-
-		if (!phone || pushAndPhone != "No") {
-			log.debug "sending push"
-			sendPush(msg)
-		}
-		if (phone) {
-			log.debug "sending SMS"
-			sendSms(phone, msg)
-		}
-	}
-}
-
+//define alerts===============================================================
+	//running
+    def notifyOn(){
+        log.trace "notifyOn"
+        def message = "Sump Pump - On"
+        sendNotification(message)
+    }
+	//Stopping
+    def notifyOff(){
+        log.trace "notifyOff"
+        def message = "Sump Pump - Off"
+        sendNotification(message)
+    }
+    //Running too long
+    def notifyRunningTooLong(){
+        log.trace "notifyRunningTooLong"
+        def message = "Sump Pump - Running Longer than configured"
+        send(message)
+    }
+    //Running too often
+    def notifyRunTooOften(){
+        log.trace "notifyRunTooOften"
+        def message = "Sump Pump - Running more often than configured"
+        send(message)
+    }
+    //Ran too long
+    def notifyRanTooLong(){
+        log.trace "notifyRanTooLong"
+        def message = "Sump Pump - (Off) Ran longer than configured"
+        send(message)
+    }
+    //Ran too often
+    def notifyRanTooOften(){
+        log.trace "notifyRanTooOften"
+        def message = "Sump Pump - (Off) Ran more often than configured"
+        send(message)
+    }
+    //Wet!!!
+    def notifyWet(){
+        log.trace "notifyWet"
+        def message = "Sump Pump - Is half full and not running"
+        send(message)
+    }
+    //Dry
+    def notifyDry(){
+        log.trace "notifyDry"
+        def message = "Sump Pump - Dry"
+        send(message)
+    }
+    //Wet while running...
+    def notifyWetAndRunning(){
+        log.trace "notifyWetAndRunning"
+        def message = "Sump Pump - Is running but half full"
+        send(message)
+    }
+//send notifications
 private send(msg) {
     
     if (sendPushMessage) {
@@ -187,9 +321,19 @@ private send(msg) {
     	sendNotificationEvent(msg)
     }
    
-//    if (phone) {
-//        sendSms(phone, msg)
-//    }
+    if (phone) {
+        sendSms(phone, msg)
+    }
 	
     log.debug msg
+}
+
+private sendNotification(msg) {
+   	sendNotificationEvent(msg)
+    log.debug msg
+}
+
+//cleanup
+def cleanup(){
+	state.lastOnOffActivity = state.currentOnOffActivity
 }
