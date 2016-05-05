@@ -226,47 +226,84 @@ def setupState() {
         
     }
     
-    def turnOffManuallyAfterFiveMinutes(){
-    	if (state.currentOnOffActivity == "turnedOff"){
-        	//Do Nothing
-        }else{
-    		turnOffVirtualSump()
-        	send("Manually turning off virtual Sump Pump")
+    def turnOffManuallyAfterDoubleRunLength(){
+        def tempSwitch = sump.currentValue("switch")
+        if (tempSwitch == "on"){
+        	turnOffVirtualSump()
+            sendNotification("Manually turning off virtual Sump Pump")
         }
     }
     
     def turnOnVirtualSump(){
-        log.trace "Turning on - virtual Sump Pump"
-        sump.on()
-        //runIn(runLength, checkToSeeIfTurnedOff)
+    
+    	log.trace "turnOnVirtualSump"
+    	def tempSwitch = sump.currentValue("switch")
+        
+        if (tempSwitch == "on"){
+        	sendNotification("Went to turn on virtual sump pump, but was already on.")
+        }else{
+        	sump.on()
+        }
+		runIn((60 * 10), turnOffManuallyAfterDoubleRunLength)        
+        
     }
 
     def turnOffVirtualSump(){
-	    log.trace "Turning off - virtual Sump Pump"
-        sump.off()
+	    log.trace "turnOffVirtualSump"
+
+        def tempSwitch = sump.currentValue("switch")
+        if (tempSwitch == "off"){
+        	sendNotification("Went to turn off virtual sump pump, but was already off.")
+        }else{
+        	sump.off()
+        }
     }
     //wet/dry===============================================================
     def turnOnWetStatus(){
-        log.trace "Wet Status - virtual Sump Pump"
-        sump.wet()
+        log.trace "turnOnWetStatus"
+
+        def tempWater = sump.currentValue("water")
+        if (tempSwitch == "wet"){
+        	sendNotification("Went to set virtual sump pump as wet, but was already set.")
+        }else{
+        	sump.wet()
+        }
     }
 
     def turnOnDryStatus(){
-        log.trace "Dry Status - virtual Sump Pump"
-        sump.wet()
+        log.trace "turnOnDryStatus"
+        
+        def tempWater = sump.currentValue("water")
+        if (tempSwitch == "dry"){
+        	sendNotification("Went to set virtual sump pump as dry, but was already set.")
+        }else{
+        	sump.dry()
+        }
     }
 
 //define alerts===============================================================
 	//running
     def notifyOn(){
         log.trace "notifyOn"
-        def message = "Sump Pump - On"
+        
+        def tempSwitch = sump.currentValue("switch")
+        if (tempSwitch == "on"){
+        	def message = "Sump Pump - On"
+        }else{
+        	def message = "Sump Pump - On (virtual not updated)"
+        }
+        
         sendNotification(message)
     }
 	//Stopping
     def notifyOff(){
         log.trace "notifyOff"
-        def message = "Sump Pump - Off"
+        def tempSwitch = sump.currentValue("switch")
+        if (tempSwitch == "off"){
+        	def message = "Sump Pump - Off"
+        }else{
+        	def message = "Sump Pump - Off (virtual not updated)"
+        }
         sendNotification(message)
     }
     //Running too long
