@@ -65,14 +65,15 @@ def setupState() {
     state.lastCycleStartDateTime = now()
     state.lastCycleEndDateTime = now()
     
-    state.currentOnOffActivity = "inactive"
+    state.currentOnOffActivity = "turnedOff"
     state.lastOnOffActivity = "turnedOff"
 }
 
 //process incoming evt===============================================================
 	//energy===============================================================
     def incomingEnergyEvent(evt){
-
+        def message = "uSP (incomingEnergyEvent) - ${evt.name} - ${evt.value}"
+        sendNotification(message)
         log.trace "processIncomingEnergyEvents"
         
         def currentEnergy = meter.currentValue("energy")
@@ -104,13 +105,14 @@ def setupState() {
         }
 
         state.lastEnergy = currentEnergy;
-        
+
         processOnOffActivity() 
         cleanup()
     }
     //vibration===============================================================
     def incomingVibrationEvent(evt){
-        def message = "uSP - ${evt.name} - ${evt.value}"
+        def message = "uSP (incomingVibrationEvent) - ${evt.name} - ${evt.value}"
+        sendNotification(message)
         log.trace "${message}"
         //send(message)
         
@@ -135,7 +137,7 @@ def setupState() {
 //run virtual device update===============================================================
 	//running or not running===============================================================
     def processOnOffActivity() {
-		
+		sendNotification("processOnOffActivity")
         //state.lastCycleStartDateTime = 0
     	//state.lastCycleEndDateTime = 0
         //runLength
@@ -224,6 +226,7 @@ def setupState() {
             }
         }
         
+        sendNotification("/processOnOffActivity")
     }
     
     def turnOffManuallyAfterDoubleRunLength(){
@@ -372,5 +375,6 @@ private sendNotification(msg) {
 
 //cleanup
 def cleanup(){
+	sendNotification("cleanup")
 	state.lastOnOffActivity = state.currentOnOffActivity
 }
