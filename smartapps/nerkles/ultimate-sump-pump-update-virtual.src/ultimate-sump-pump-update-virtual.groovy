@@ -1,8 +1,8 @@
 definition(
-    name: "Ultimate Sump Pump Monitor",
+    name: "Ultimate Sump Pump - Update Virtual",
     namespace: "nerkles",
     author: "Chris Apple",
-    description: "Monitor my sump pump, using power, vibration and water sensors.  Also updates a virtual sump pump so its status can be seen as a device.",
+    description: "Update a virtual sump pump with the status from other devices.",
     category: "Safety & Security",
     iconUrl: "https://s3.amazonaws.com/smartthings-device-icons/alarm/water/wet.png",
     iconX2Url: "https://s3.amazonaws.com/smartthings-device-icons/alarm/water/wet@2x.png",
@@ -121,11 +121,11 @@ def setupState() {
         
         if (evt.value == "active"){
         	//state.currentOnOffActivity = "turnedOn"
-            turnOnVirtualSump()
+            //turnOnVirtualSump()
         }
         else if (evt.value == "inactive"){
             //state.currentOnOffActivity = "turnedOff"
-            turnOffVirtualSump()
+            //turnOffVirtualSump()
         }
 		//processOnOffActivity() 
         //cleanup()
@@ -249,7 +249,7 @@ def setupState() {
     	def tempSwitch = sump.currentValue("switch")
         
         if (tempSwitch == "on"){
-        	sendNotification("Went to turn on virtual sump pump, but was already on.")
+        	//sendNotification("Went to turn on virtual sump pump, but was already on.")
         }else{
         	sump.on()
         }
